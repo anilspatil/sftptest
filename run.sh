@@ -169,7 +169,32 @@ main() {
     ensure_ssh_agent_running_and_key_added
   else
     log_debug "Using SFTP Password authentication via ${AUTH_METHOD}."
-    command -v sshpass >/dev/null 2>&1 || die "'sshpass' is not installed. It is required for password authentication."
+    if ! command -v sshpass >/dev/null 2>&1; then
+          log_message "WARN" "'sshpass' is not installed. Attempting to install it automatically..."
+
+          local install_cmd=""
+          if command -v apt-get >/dev/null 2>&1; then
+            log_message "INFO" "Using 'apt-get' to install..."
+            install_cmd="sudo apt-get update && sudo apt-get install -y sshpass"
+          elif command -v dnf >/dev/null 2>&1; then
+            log_message "INFO" "Using 'dnf' to install..."
+            install_cmd="sudo dnf install -y sshpass"
+          elif command -v yum >/dev/null 2>&1; then
+            log_message "INFO" "Using 'yum' to install..."
+            install_cmd="sudo yum install -y sshpass"
+          else
+            die "Could not find a known package manager (apt-get, dnf, yum). Please install 'sshpass' manually."
+          fi
+
+          log_message "INFO" "Executing: ${install_cmd}"
+          # This command might prompt for a sudo password if not running as root or passwordless sudo is not configured.
+          eval "$install_cmd"
+
+          if ! command -v sshpass >/dev/null 2>&1; then
+            die "Installation of 'sshpass' failed. Please install it manually and re-run the script."
+          fi
+          log_message "SUCCESS" "'sshpass' has been successfully installed."
+        fi
     if [ "$AUTH_METHOD" = "password_file" ]; then
       [ -f "${SFTP_PASSWORD_FILE}" ] || die "Password file not found at: ${SFTP_PASSWORD_FILE}"
     fi
