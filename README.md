@@ -10,7 +10,9 @@ This is the definitive, debugged version of the script. It provides a modular, r
 ## Prerequisites
 1.  **`gcloud` CLI**: Required for GCS operations and Secret Manager.
 2.  **`ssh` Client**: Standard on most Linux/macOS systems.
-3.  **`sshpass` (Optional)**: Required **only** if you use any form of password-based authentication.
+3.  **`sshpass` (Optional)**: Required **only** if you use any form of password-based authentication.  
+- **Automatic Installation:** If `sshpass` is not found, the script will automatically attempt to install it using `sudo` and your system's package manager (`apt-get`, `dnf`, `yum`).
+- **Sudo Requirement:** This automatic installation requires that the user running the script has `sudo` privileges. In a fully unattended environment (like a cron job), you should either pre-install `sshpass` or configure passwordless `sudo` to avoid the script hanging on a password prompt.
 ## Usage
 Run `./run.sh --help` for a full list of all available options.
 ### Example 1: Using the Reliable Password File Method (Recommended for Testing)
