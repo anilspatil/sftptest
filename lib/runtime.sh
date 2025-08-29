@@ -2,7 +2,7 @@
 source "${SCRIPT_DIR}/lib/common.sh"
 
 # Retries a command up to RETRY_COUNT times with a delay.
-# Handles commands with multiple arguments correctly.
+# This is the corrected version that handles all arguments properly.
 retry() {
   local attempt=1
   while [ $attempt -le "${RETRY_COUNT}" ]; do

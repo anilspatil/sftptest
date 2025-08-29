@@ -13,19 +13,31 @@ This is the definitive, debugged version of the script. It provides a modular, r
 3.  **`sshpass` (Optional)**: Required **only** if you use any form of password-based authentication.  
 - **Automatic Installation:** If `sshpass` is not found, the script will automatically attempt to install it using `sudo` and your system's package manager (`apt-get`, `dnf`, `yum`).
 - **Sudo Requirement:** This automatic installation requires that the user running the script has `sudo` privileges. In a fully unattended environment (like a cron job), you should either pre-install `sshpass` or configure passwordless `sudo` to avoid the script hanging on a password prompt.
-## Usage
-Run `./run.sh --help` for a full list of all available options.
-### Example 1: Using the Reliable Password File Method (Recommended for Testing)
-```bash
-# First, create and secure the password file:
-echo "password" > .sftp_pass && chmod 600 .sftp_pass
 
-# Then, run the script to download only .png files:
+## Authentication Methods
+
+The script evaluates authentication methods in the following order of priority:
+
+### 1. Google Secret Manager (Recommended for Passwords)
+
+This is the most secure method for handling passwords.
+- **Flag**: `--sftp-secret-id YOUR_SECRET_NAME`
+- **Flag**: `--gcp-project-id YOUR_PROJECT_ID` **(Required with secret ID)**
+- **Setup**:
+    1.  Enable the Secret Manager API in your Google Cloud project.
+    2.  Create a secret containing your SFTP password.
+    3.  Grant the **`Secret Manager Secret Accessor`** IAM role to the user or service account running the script.
+
+### 2. SSH Key / Passphrase (Default Method)
+
+## Usage
+
+### Example 1: Using Google Secret Manager (Most Secure)
+```bash
 ./run.sh \
-  --sftp-host test.rebex.net \
-  --sftp-user demo \
-  --sftp-remote-path /pub/example/ \
-  --gcs-bucket your-fake-bucket \
-  --sftp-password-file .sftp_pass \
-  --file-pattern "*.png" \
-  --verbose
+  --sftp-host sftp.example.com \
+  --sftp-user sftpuser \
+  --sftp-remote-path /exports/ \
+  --gcs-bucket my-gcs-bucket \
+  --sftp-secret-id "sftp-prod-password" \
+  --gcp-project-id "my-gcp-project-123"

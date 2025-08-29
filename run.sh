@@ -19,6 +19,9 @@ REQUIRED OPTIONS:
 
 AUTHENTICATION OPTIONS (Priority: Secret > File > Env Var > Key):
       --sftp-secret-id ID       [RECOMMENDED] Fetch password from Google Secret Manager.
+                                REQUIRES --gcp-project-id.
+      --gcp-project-id ID       The GCP Project ID where the secret is stored.
+                                REQUIRED when using --sftp-secret-id.
   -k, --sftp-key PATH           Use a specific SSH private key (Default: ~/.ssh/id_rsa).
   --sftp-password-file FILE     (Legacy) Use a local file containing the password.
   --sftp-password-env VAR       (Legacy) Use an environment variable with the password.
@@ -54,6 +57,7 @@ DELETE_REMOTE_AFTER_SUCCESS=false
 DELETE_LOCAL_AFTER_SUCCESS=true
 LOG_FORMAT="text"
 SFTP_SECRET_ID=""
+GCP_PROJECT_ID=""
 SFTP_PASSWORD_FILE=""
 SFTP_PASSWORD_ENV_VAR=""
 SFTP_PASSWORD=""
@@ -73,6 +77,7 @@ while [[ "$#" -gt 0 ]]; do
     -w|--workflow)          WORKFLOW="$2"; shift ;;
     -f|--file-pattern)      SFTP_FILE_PATTERN="$2"; shift ;;
     --sftp-secret-id)       SFTP_SECRET_ID="$2"; shift ;;
+    --gcp-project-id)       GCP_PROJECT_ID="$2"; shift ;;
     --sftp-password-file)   SFTP_PASSWORD_FILE="$2"; shift ;;
     --sftp-password-env)    SFTP_PASSWORD_ENV_VAR="$2"; shift ;;
     --batch-size)           BATCH_SIZE="$2"; shift ;;
@@ -107,10 +112,15 @@ source "${SCRIPT_DIR}/lib/workflow.sh"
 
 # --- Handle password retrieval AFTER libraries are sourced ---
 if [ "$AUTH_METHOD" = "secret_manager" ]; then
+    if [ -z "$GCP_PROJECT_ID" ]; then
+        # Cannot use die() yet, but this is a fatal startup error.
+        echo "Error: --gcp-project-id is required when using --sftp-secret-id." >&2
+        exit 1
+    fi
     command -v gcloud >/dev/null 2>&1 || die "'gcloud' is not installed. It is required for Secret Manager authentication."
     log_message "INFO" "Fetching SFTP password from Google Secret Manager..."
-    SFTP_PASSWORD=$(gcloud secrets versions access latest --secret="${SFTP_SECRET_ID}" --quiet)
-    if [ -z "$SFTP_PASSWORD" ]; then die "Failed to fetch secret '${SFTP_SECRET_ID}'. Check ID, gcloud auth, and IAM permissions."; fi
+    SFTP_PASSWORD=$(gcloud secrets versions access latest --secret="${SFTP_SECRET_ID}" --project="${GCP_PROJECT_ID}" --quiet)
+    if [ -z "$SFTP_PASSWORD" ]; then die "Failed to fetch secret '${SFTP_SECRET_ID}' from project '${GCP_PROJECT_ID}'. Check ID, gcloud auth, and IAM permissions."; fi
 elif [ "$AUTH_METHOD" = "password_env" ]; then
     SFTP_PASSWORD="${!SFTP_PASSWORD_ENV_VAR}"
     if [ -z "$SFTP_PASSWORD" ]; then die "--sftp-password-env was set to '${SFTP_PASSWORD_ENV_VAR}', but this environment variable is empty or not set."; fi
@@ -136,7 +146,10 @@ log_configuration_summary() {
     log_debug "SFTP File Pattern:        ${SFTP_FILE_PATTERN}"
     log_debug "Authentication Method:    ${AUTH_METHOD}"
     if [ "$AUTH_METHOD" = "key" ]; then log_debug "SSH Key Path:             ${SFTP_PRIVATE_KEY_PATH}";
-    elif [ "$AUTH_METHOD" = "secret_manager" ]; then log_debug "Secret Manager ID:        ${SFTP_SECRET_ID}"; fi
+    elif [ "$AUTH_METHOD" = "secret_manager" ]; then
+        log_debug "Secret Manager ID:        ${SFTP_SECRET_ID}"
+        log_debug "GCP Project ID:           ${GCP_PROJECT_ID}"
+    fi
     log_debug "Workflow:                 ${WORKFLOW}"
     log_debug "Log File Path:            ${LOG_FILE_PATH}"
     log_debug "State File Path:          ${STATE_FILE}"
@@ -161,7 +174,7 @@ main() {
 
   # Prerequisite Checks
   command -v gsutil >/dev/null 2>&1 || die "gsutil command not found."
-  command -v ssh >/dev/null 2>&1 || die "ssh/sftp command not found."
+  command -v ssh >/dev/null 2>&1 || die "ssh command not found."
 
   if [ "$AUTH_METHOD" = "key" ]; then
     log_debug "Using SSH Key authentication."
@@ -169,32 +182,7 @@ main() {
     ensure_ssh_agent_running_and_key_added
   else
     log_debug "Using SFTP Password authentication via ${AUTH_METHOD}."
-    if ! command -v sshpass >/dev/null 2>&1; then
-          log_message "WARN" "'sshpass' is not installed. Attempting to install it automatically..."
-
-          local install_cmd=""
-          if command -v apt-get >/dev/null 2>&1; then
-            log_message "INFO" "Using 'apt-get' to install..."
-            install_cmd="sudo apt-get update && sudo apt-get install -y sshpass"
-          elif command -v dnf >/dev/null 2>&1; then
-            log_message "INFO" "Using 'dnf' to install..."
-            install_cmd="sudo dnf install -y sshpass"
-          elif command -v yum >/dev/null 2>&1; then
-            log_message "INFO" "Using 'yum' to install..."
-            install_cmd="sudo yum install -y sshpass"
-          else
-            die "Could not find a known package manager (apt-get, dnf, yum). Please install 'sshpass' manually."
-          fi
-
-          log_message "INFO" "Executing: ${install_cmd}"
-          # This command might prompt for a sudo password if not running as root or passwordless sudo is not configured.
-          eval "$install_cmd"
-
-          if ! command -v sshpass >/dev/null 2>&1; then
-            die "Installation of 'sshpass' failed. Please install it manually and re-run the script."
-          fi
-          log_message "SUCCESS" "'sshpass' has been successfully installed."
-        fi
+    command -v sshpass >/dev/null 2>&1 || die "'sshpass' is not installed. It is required for password authentication."
     if [ "$AUTH_METHOD" = "password_file" ]; then
       [ -f "${SFTP_PASSWORD_FILE}" ] || die "Password file not found at: ${SFTP_PASSWORD_FILE}"
     fi
